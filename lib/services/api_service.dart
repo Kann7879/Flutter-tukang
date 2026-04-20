@@ -14,16 +14,13 @@ class ApiService {
     ),
   );
 
-  // Constructor
   ApiService() {
     _setupInterceptors();
   }
 
-  // Setup interceptors untuk token
   void _setupInterceptors() {
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
-        // Tambahkan token ke header jika ada
         final prefs = await SharedPreferences.getInstance();
         final token = prefs.getString("token");
         
@@ -34,7 +31,6 @@ class ApiService {
         return handler.next(options);
       },
       onError: (error, handler) async {
-        // Jika token expired (401), logout
         if (error.response?.statusCode == 401) {
           await logout();
         }
@@ -43,46 +39,40 @@ class ApiService {
     ));
   }
 
-  // ✅ SET TOKEN MANUAL
+  // ✅ SET TOKEN MANUAL (REMAIN)
   Future<void> setToken() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString("token");
-
     if (token != null) {
       _dio.options.headers["Authorization"] = "Bearer $token";
     }
   }
 
-  // ✅ SAVE TOKEN AFTER LOGIN
+  // ✅ SAVE TOKEN AFTER LOGIN (REMAIN)
   Future<void> saveToken(String token) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString("token", token);
     _dio.options.headers["Authorization"] = "Bearer $token";
   }
 
-  // ✅ LOGIN
+  // ✅ LOGIN (MATCH ✅)
   Future<Response> login(String email, String password) async {
     try {
-      final response = await _dio.post(
-        "/auth/login",
-        data: {
-          "email": email,
-          "password": password,
-        },
-      );
+      final response = await _dio.post("/auth/login", data: {
+        "email": email,
+        "password": password,
+      });
       
-      // Simpan token jika login berhasil
       if (response.statusCode == 200 && response.data['token'] != null) {
         await saveToken(response.data['token']);
       }
-      
       return response;
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  // ✅ REGISTER
+  // ✅ REGISTER (MATCH ✅)
   Future<Response> register({
     required String username,
     required String name,
@@ -91,29 +81,24 @@ class ApiService {
     required String passwordConfirmation,
   }) async {
     try {
-      final response = await _dio.post(
-        "/auth/register",
-        data: {
-          "username": username,
-          "name": name,
-          "email": email,
-          "password": password,
-          "password_confirmation": passwordConfirmation,
-        },
-      );
+      final response = await _dio.post("/auth/register", data: {
+        "username": username,
+        "name": name,
+        "email": email,
+        "password": password,
+        "password_confirmation": passwordConfirmation,
+      });
       
-      // Simpan token jika register berhasil
       if (response.statusCode == 201 && response.data['token'] != null) {
         await saveToken(response.data['token']);
       }
-      
       return response;
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  // ✅ GET USER PROFILE
+  // ✅ GET USER PROFILE (MATCH /auth/me ✅)
   Future<Response> getProfile() async {
     try {
       await setToken();
@@ -123,69 +108,62 @@ class ApiService {
     }
   }
 
-  // ✅ GET ALL CATEGORIES
+  // ✅ GET ALL CATEGORIES (MATCH ✅ - Public)
   Future<Response> getCategories() async {
     try {
-      await setToken();
-      return await _dio.get("/categories");
+      return await _dio.get("/categories"); // No auth needed
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  // ✅ GET TOP TUKANG (BEST RATED)
+  // ✅ GET TOP TUKANG (MATCH ✅ - Public)
   Future<Response> getTopTukang() async {
     try {
-      await setToken();
-      return await _dio.get("/tukang/top");
+      return await _dio.get("/tukang/top"); // No auth needed
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  // ✅ GET ALL TUKANG
+  // ✅ GET ALL TUKANG (MATCH ✅ - Public)
   Future<Response> getAllTukang() async {
     try {
-      await setToken();
-      return await _dio.get("/tukang");
+      return await _dio.get("/tukang"); // No auth needed
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  // ✅ GET TUKANG BY CATEGORY
+  // ✅ GET TUKANG BY CATEGORY (MATCH ✅ - Public)
   Future<Response> getTukangByCategory(int categoryId) async {
     try {
-      await setToken();
-      return await _dio.get("/tukang/category/$categoryId");
+      return await _dio.get("/tukang/category/$categoryId"); // No auth needed
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  // ✅ GET TUKANG DETAIL
+  // ✅ GET TUKANG DETAIL (MATCH ✅ - Public)
   Future<Response> getTukangDetail(int tukangId) async {
     try {
-      await setToken();
-      return await _dio.get("/tukang/$tukangId");
+      return await _dio.get("/tukang/$tukangId"); // No auth needed
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  // ✅ SEARCH TUKANG
+  // ✅ SEARCH TUKANG (REMAIN - tambah route nanti)
   Future<Response> searchTukang(String keyword) async {
     try {
       await setToken();
-      return await _dio.get("/tukang/search", queryParameters: {
-        "q": keyword,
-      });
+      return await _dio.get("/tukang/search", queryParameters: {"q": keyword});
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  // ✅ CREATE JOB
+  // ✅ CREATE JOB (MATCH ✅)
   Future<Response> createJob({
     required int serviceId,
     required int categoryId,
@@ -207,7 +185,7 @@ class ApiService {
     }
   }
 
-  // ✅ GET MY JOBS
+  // ✅ GET MY JOBS (MATCH ✅)
   Future<Response> getMyJobs() async {
     try {
       await setToken();
@@ -217,7 +195,7 @@ class ApiService {
     }
   }
 
-  // ✅ GET JOB DETAIL
+  // ✅ GET JOB DETAIL (MATCH ✅)
   Future<Response> getJobDetail(int jobId) async {
     try {
       await setToken();
@@ -227,17 +205,17 @@ class ApiService {
     }
   }
 
-  // ✅ CANCEL JOB
+  // ✅ CANCEL JOB (REMAIN - pakai update job)
   Future<Response> cancelJob(int jobId) async {
     try {
       await setToken();
-      return await _dio.put("/jobs/$jobId/cancel");
+      return await _dio.put("/jobs/$jobId", data: {"status": "cancelled"});
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  // ✅ RATE JOB
+  // ✅ RATE JOB (REMAIN - pakai reviews)
   Future<Response> rateJob({
     required int jobId,
     required double rating,
@@ -245,7 +223,8 @@ class ApiService {
   }) async {
     try {
       await setToken();
-      return await _dio.post("/jobs/$jobId/rating", data: {
+      return await _dio.post("/reviews", data: {
+        "job_id": jobId,
         "rating": rating,
         "review": review,
       });
@@ -254,7 +233,7 @@ class ApiService {
     }
   }
 
-  // ✅ GET FAVORITE TUKANG
+  // ✅ GET FAVORITE TUKANG (REMAIN - tambah route nanti)
   Future<Response> getFavoriteTukang() async {
     try {
       await setToken();
@@ -264,19 +243,17 @@ class ApiService {
     }
   }
 
-  // ✅ ADD TO FAVORITE
+  // ✅ ADD TO FAVORITE (REMAIN)
   Future<Response> addToFavorite(int tukangId) async {
     try {
       await setToken();
-      return await _dio.post("/favorites", data: {
-        "tukang_id": tukangId,
-      });
+      return await _dio.post("/favorites", data: {"tukang_id": tukangId});
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  // ✅ REMOVE FROM FAVORITE
+  // ✅ REMOVE FROM FAVORITE (REMAIN)
   Future<Response> removeFromFavorite(int favoriteId) async {
     try {
       await setToken();
@@ -286,7 +263,7 @@ class ApiService {
     }
   }
 
-  // ✅ UPDATE PROFILE
+  // ✅ UPDATE PROFILE (REMAIN - pakai customer profile)
   Future<Response> updateProfile({
     String? name,
     String? username,
@@ -297,7 +274,7 @@ class ApiService {
   }) async {
     try {
       await setToken();
-      return await _dio.put("/profile", data: {
+      return await _dio.post("/customer/profile", data: {
         if (name != null) "name": name,
         if (username != null) "username": username,
         if (email != null) "email": email,
@@ -310,7 +287,17 @@ class ApiService {
     }
   }
 
-  // ✅ GET TUKANG PROFILE (SPECIAL endpoint untuk tukang)
+  // ✅ GET CUSTOMER PROFILE (MATCH ✅)
+  Future<Response> getCustomerProfile() async {
+    try {
+      await setToken();
+      return await _dio.get("/customer/profile");
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // ✅ GET TUKANG PROFILE (MATCH ✅)
   Future<Response> getTukangProfile() async {
     try {
       await setToken();
@@ -320,7 +307,7 @@ class ApiService {
     }
   }
 
-  // ✅ UPDATE TUKANG PROFILE
+  // ✅ UPDATE TUKANG PROFILE (MATCH ✅)
   Future<Response> updateTukangProfile({
     String? deskripsi,
     String? noHp,
@@ -338,7 +325,17 @@ class ApiService {
     }
   }
 
-  // ✅ UPLOAD PROFILE PHOTO
+  // ✅ GET TUKANG DASHBOARD (MATCH ✅)
+  Future<Response> getTukangDashboard() async {
+    try {
+      await setToken();
+      return await _dio.get("/tukang/dashboard");
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // ✅ UPLOAD PROFILE PHOTO (REMAIN - tambah route nanti)
   Future<Response> uploadProfilePhoto(FormData formData) async {
     try {
       await setToken();
@@ -348,7 +345,7 @@ class ApiService {
     }
   }
 
-  // ✅ CHANGE PASSWORD
+  // ✅ CHANGE PASSWORD (REMAIN - tambah route nanti)
   Future<Response> changePassword({
     required String currentPassword,
     required String newPassword,
@@ -366,17 +363,16 @@ class ApiService {
     }
   }
 
-  // ✅ LOGOUT
+  // ✅ LOGOUT (MATCH ✅)
   Future<void> logout() async {
     try {
       await setToken();
       await _dio.post("/auth/logout");
       print("✅ Server logout success");
     } catch (e) {
-      print("⚠️ Server logout error: $e (akan clear local token anyway)");
+      print("⚠️ Server logout error: $e");
     }
     
-    // Selalu clear token lokal regardless backend success/fail
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove("token");
@@ -387,7 +383,7 @@ class ApiService {
     }
   }
 
-  // ✅ CHECK TOKEN VALIDITY
+  // ✅ CHECK TOKEN VALIDITY (REMAIN)
   Future<bool> isTokenValid() async {
     try {
       await getProfile();
@@ -397,17 +393,17 @@ class ApiService {
     }
   }
 
-  // ✅ GET MY SERVICES
+  // ✅ GET MY SERVICES (MATCH ✅)
   Future<Response> getMyServices() async {
     try {
       await setToken();
-      return await _dio.get("/services");
+      return await _dio.get("/services/my");
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  // ✅ CREATE SERVICE
+  // ✅ CREATE SERVICE (MATCH ✅)
   Future<Response> createService({
     required int categoryId,
     required int priceMin,
@@ -427,7 +423,7 @@ class ApiService {
     }
   }
 
-  // ✅ UPDATE SERVICE
+  // ✅ UPDATE SERVICE (REMAIN - tambah route nanti)
   Future<Response> updateService({
     required int serviceId,
     int? categoryId,
@@ -448,7 +444,7 @@ class ApiService {
     }
   }
 
-  // ✅ DELETE SERVICE
+  // ✅ DELETE SERVICE (REMAIN - tambah route nanti)
   Future<Response> deleteService(int serviceId) async {
     try {
       await setToken();
@@ -458,7 +454,7 @@ class ApiService {
     }
   }
 
-  // ✅ GET NOTIFICATIONS
+  // ✅ GET NOTIFICATIONS (REMAIN - tambah route nanti)
   Future<Response> getNotifications() async {
     try {
       await setToken();
@@ -468,7 +464,7 @@ class ApiService {
     }
   }
 
-  // ✅ MARK NOTIFICATION AS READ
+  // ✅ MARK NOTIFICATION AS READ (REMAIN)
   Future<Response> markNotificationAsRead(int notificationId) async {
     try {
       await setToken();
@@ -478,15 +474,96 @@ class ApiService {
     }
   }
 
-  // Error handler
+  // ✅ NEW: CUSTOMER HISTORY (MATCH ✅)
+  Future<Response> getCustomerLastOrder() async {
+    try {
+      await setToken();
+      return await _dio.get("/customer/last-order");
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<Response> getCustomerHistory() async {
+    try {
+      await setToken();
+      return await _dio.get("/customer/history");
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // ✅ NEW: TUKANG HISTORY (MATCH ✅)
+  Future<Response> getTukangHistory() async {
+    try {
+      await setToken();
+      return await _dio.get("/tukang/history");
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<Response> getTukangLastJob() async {
+    try {
+      await setToken();
+      return await _dio.get("/tukang/last-job");
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // ✅ NEW: TRANSACTIONS (MATCH ✅)
+  Future<Response> createTransaction(Map<String, dynamic> data) async {
+    try {
+      await setToken();
+      return await _dio.post("/transactions", data: data);
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<Response> getMyTransactions() async {
+    try {
+      await setToken();
+      return await _dio.get("/transactions/my");
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<Response> payTransaction(int transactionId) async {
+    try {
+      await setToken();
+      return await _dio.patch("/transactions/$transactionId/pay");
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // ✅ NEW: MESSAGES (MATCH ✅)
+  Future<Response> sendMessage(Map<String, dynamic> data) async {
+    try {
+      await setToken();
+      return await _dio.post("/messages", data: data);
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<Response> getMessages(int jobId) async {
+    try {
+      await setToken();
+      return await _dio.get("/messages/$jobId");
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   String _handleError(DioException error) {
     if (error.response != null) {
-      // Server responded with error status
       final data = error.response?.data;
       if (data != null && data is Map) {
-        if (data['message'] != null) {
-          return data['message'];
-        }
+        if (data['message'] != null) return data['message'];
         if (data['errors'] != null) {
           final errors = data['errors'] as Map;
           return errors.values.first.first;
@@ -494,16 +571,14 @@ class ApiService {
       }
       return "Terjadi kesalahan: ${error.response?.statusCode}";
     } else if (error.type == DioExceptionType.connectionTimeout) {
-      return "Koneksi timeout, silakan coba lagi";
+      return "Koneksi timeout";
     } else if (error.type == DioExceptionType.receiveTimeout) {
-      return "Server tidak merespons, silakan coba lagi";
+      return "Server tidak merespons";
     } else if (error.type == DioExceptionType.connectionError) {
       return "Tidak dapat terhubung ke server";
-    } else {
-      return "Terjadi kesalahan: ${error.message}";
     }
+    return "Terjadi kesalahan: ${error.message}";
   }
 
-  // Getter untuk dio (jika perlu akses langsung)
   Dio get dio => _dio;
 }

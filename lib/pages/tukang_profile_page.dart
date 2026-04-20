@@ -28,9 +28,15 @@ class _TukangProfilePageState extends State<TukangProfilePage> {
   File? _pickedImage;
   List<Service> _services = [];
   
+  // Simpan data tukang profile
+  Map<String, dynamic>? _tukangData;
+  
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
+  // Controller untuk data tukang
+  final TextEditingController _deskripsiController = TextEditingController();
+  final TextEditingController _kotaController = TextEditingController();
 
   @override
   void initState() {
@@ -38,53 +44,33 @@ class _TukangProfilePageState extends State<TukangProfilePage> {
     _loadProfileData();
   }
 
-  Future<void> _loadProfileData() async {
-    try {
-      print("🔍 Loading user profile data...");
-      
-      // Load user data
-      final userResponse = await _apiService.getProfile();
-      print("✅ User Response: ${userResponse.data}");
-      
-      if (userResponse.data != null) {
-        _user = User.fromJson(userResponse.data);
-        print("✅ USER DATA LOADED - Name: ${_user?.name}, Phone: ${_user?.phone}, Email: ${_user?.email}");
-      }
-      
-      // Update UI dengan user data - show early
-      setState(() {
-        _nameController.text = _user?.name ?? '';
-        _phoneController.text = _user?.phone ?? '';
-        _emailController.text = _user?.email ?? '';
-        _isLoading = false;
-      });
-      
-      print("✅ PROFIL LOADED - UI shown");
-      
-      // Load tukang profile data in background
-      Future.microtask(() async {
-        try {
-          final tukangResponse = await _apiService.getTukangProfile();
-          print("📍 Tukang Response: ${tukangResponse.data}");
-          
-          if (tukangResponse.data != null) {
-            final tukangData = tukangResponse.data['data'] ?? tukangResponse.data;
-            print("✅ TUKANG DATA - foto: ${tukangData['foto']}, deskripsi: ${tukangData['deskripsi']}, no_hp: ${tukangData['no_hp']}, kota: ${tukangData['kota']}, rating: ${tukangData['rating']}");
-          }
-        } catch (tukangError) {
-          print("⚠️ Tukang profile belum dibuat: $tukangError");
-        }
-      });
-      
-      // Load services in background
-      _loadServices();
-    } catch (e, stackTrace) {
-      print("❌ ERROR LOAD PROFILE: $e");
-      print("❌ STACK TRACE: $stackTrace");
-      setState(() => _isLoading = false);
-      _showErrorDialog("Gagal memuat profil: $e");
-    }
+ Future<void> _loadProfileData() async {
+  try {
+    // 1. Load USER data (name, email)
+    final userResponse = await _apiService.getProfile(); // /auth/me
+    _user = User.fromJson(userResponse.data);
+    
+    setState(() {
+      _nameController.text = _user?.name ?? '';
+      _emailController.text = _user?.email ?? '';
+    });
+
+    // 2. Load TUKANG PROFILE (no_hp, kota, deskripsi)
+    final tukangResponse = await _apiService.getTukangProfile(); // /tukang/profile
+    final profileData = tukangResponse.data['data'] ?? tukangResponse.data;
+    
+    setState(() {
+      _phoneController.text = profileData['profile']?['no_hp'] ?? profileData['no_hp'] ?? '';
+      _kotaController.text = profileData['profile']?['kota'] ?? profileData['kota'] ?? '';
+      _deskripsiController.text = profileData['profile']?['deskripsi'] ?? profileData['deskripsi'] ?? '';
+    });
+
+    _isLoading = false;
+    _loadServices();
+  } catch (e) {
+    _isLoading = false;
   }
+}
 
   Future<void> _loadServices() async {
     try {
@@ -163,14 +149,21 @@ class _TukangProfilePageState extends State<TukangProfilePage> {
     setState(() => _isSaving = true);
 
     try {
-      // Update profile data
+      // 1. Update user data (nama, email saja)
       await _apiService.updateProfile(
         name: _nameController.text,
-        phone: _phoneController.text,
         email: _emailController.text,
+        // JANGAN KIRIM PHONE KE USER API - gak ada field-nya!
       );
 
-      // Upload photo jika ada
+      // 2. UPDATE TUKANG PROFILE (no_hp, deskripsi, kota)
+      await _apiService.updateTukangProfile(
+        noHp: _phoneController.text,
+        deskripsi: _deskripsiController.text,
+        kota: _kotaController.text,
+      );
+
+      // 3. Upload photo jika ada
       if (_pickedImage != null) {
         final formData = FormData.fromMap({
           "foto": await MultipartFile.fromFile(_pickedImage!.path),
@@ -180,18 +173,14 @@ class _TukangProfilePageState extends State<TukangProfilePage> {
 
       setState(() => _isSaving = false);
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profil berhasil diperbarui')),
-      );
+      _showSuccessMessage('Profil berhasil diperbarui');
 
       // Reload data
       _loadProfileData();
     } catch (e) {
       print("ERROR SAVE PROFILE: $e");
       setState(() => _isSaving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal menyimpan profil: $e')),
-      );
+      _showErrorDialog("Gagal menyimpan profil: $e");
     }
   }
 
@@ -211,7 +200,7 @@ class _TukangProfilePageState extends State<TukangProfilePage> {
               onPressed: () async {
                 Navigator.pop(context);
                 
-                // Backend logout - fire and forget (don't wait)
+                // Backend logout - fire and forget
                 _apiService.logout().ignore();
                 
                 // Clear local data immediately
@@ -223,7 +212,7 @@ class _TukangProfilePageState extends State<TukangProfilePage> {
                   print("❌ Error clear data: $e");
                 }
                 
-                // Navigate langsung ke login
+                // Navigate ke login
                 if (mounted) {
                   Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
                   print("✅ Logged out & navigated to login");
@@ -317,7 +306,7 @@ class _TukangProfilePageState extends State<TukangProfilePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            /// 🔹 FOTO PROFIL
+            /// FOTO PROFIL
             GestureDetector(
               onTap: _pickImage,
               child: Container(
@@ -365,8 +354,8 @@ class _TukangProfilePageState extends State<TukangProfilePage> {
 
             const SizedBox(height: 32),
 
-            /// 🔹 FORM FIELDS
-            /// 🔹 NAMA
+            /// FORM FIELDS
+            /// NAMA
             _buildTextField(
               controller: _nameController,
               label: 'Nama',
@@ -377,7 +366,7 @@ class _TukangProfilePageState extends State<TukangProfilePage> {
 
             const SizedBox(height: 16),
 
-            /// 🔹 PROFESI
+            /// PROFESI
             _buildTextField(
               controller: TextEditingController(text: 'Tukang'),
               label: 'Profesi',
@@ -388,7 +377,7 @@ class _TukangProfilePageState extends State<TukangProfilePage> {
 
             const SizedBox(height: 16),
 
-            /// 🔹 NO TELPON
+            /// NO TELPON - DARI TUKANG PROFILE
             _buildTextField(
               controller: _phoneController,
               label: 'No. Telpon',
@@ -400,7 +389,7 @@ class _TukangProfilePageState extends State<TukangProfilePage> {
 
             const SizedBox(height: 16),
 
-            /// 🔹 EMAIL
+            /// EMAIL
             _buildTextField(
               controller: _emailController,
               label: 'Email',
@@ -410,9 +399,32 @@ class _TukangProfilePageState extends State<TukangProfilePage> {
               keyboardType: TextInputType.emailAddress,
             ),
 
+            const SizedBox(height: 16),
+
+            /// KOTA - DARI TUKANG PROFILE
+            _buildTextField(
+              controller: _kotaController,
+              label: 'Kota',
+              hint: _kotaController.text.isEmpty ? 'Kota belum ditambahkan' : '',
+              icon: Icons.location_city,
+              prefixIcon: true,
+            ),
+
+            const SizedBox(height: 16),
+
+            /// DESKRIPSI - DARI TUKANG PROFILE
+            _buildTextField(
+              controller: _deskripsiController,
+              label: 'Deskripsi',
+              hint: _deskripsiController.text.isEmpty ? 'Deskripsi belum ditambahkan' : '',
+              icon: Icons.description,
+              prefixIcon: true,
+              maxLines: 3,
+            ),
+
             const SizedBox(height: 32),
 
-            /// 🔹 SAVE BUTTON
+            /// SAVE BUTTON
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
@@ -446,7 +458,7 @@ class _TukangProfilePageState extends State<TukangProfilePage> {
 
             const SizedBox(height: 32),
 
-            /// 🔹 LAYANAN / SERVICES SECTION
+            /// LAYANAN / SERVICES SECTION
             Center(
               child: Text(
                 'Daftar Layanan Anda',
@@ -615,11 +627,13 @@ class _TukangProfilePageState extends State<TukangProfilePage> {
     bool prefixIcon = false,
     TextInputType keyboardType = TextInputType.text,
     bool readOnly = false,
+    int maxLines = 1,
   }) {
     return TextField(
       controller: controller,
       readOnly: readOnly,
       keyboardType: keyboardType,
+      maxLines: maxLines,
       decoration: InputDecoration(
         labelText: label,
         labelStyle: const TextStyle(color: Color(0xFF2563EB)),
@@ -648,6 +662,8 @@ class _TukangProfilePageState extends State<TukangProfilePage> {
     _nameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
+    _deskripsiController.dispose();
+    _kotaController.dispose();
     super.dispose();
   }
 }
