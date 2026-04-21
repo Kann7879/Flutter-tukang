@@ -29,7 +29,7 @@ class User {
 
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
-      id: json['id'],
+      id: _parseInt(json['id']),              // ✅ FIX: safe cast
       username: json['username'] ?? '',
       name: json['name'] ?? '',
       email: json['email'] ?? '',
@@ -37,12 +37,28 @@ class User {
       phone: json['no_telepon'] ?? json['phone'],
       address: json['alamat'] ?? json['address'],
       role: json['role'],
-      totalJobs: json['total_jobs'] ?? 0,
-      pendingJobs: json['pending_jobs'] ?? 0,
-      completedJobs: json['completed_jobs'] ?? 0,
-      rating: (json['rating'] is int) 
-          ? (json['rating'] as int).toDouble()
-          : (json['rating'] as double?) ?? 0.0,
+      totalJobs: _parseInt(json['total_jobs']),        // ✅ FIX
+      pendingJobs: _parseInt(json['pending_jobs']),    // ✅ FIX
+      completedJobs: _parseInt(json['completed_jobs']),// ✅ FIX
+      rating: _parseDouble(json['rating']),            // ✅ FIX
     );
+  }
+
+  // ✅ Helper safe parse int
+  static int _parseInt(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
+  }
+
+  // ✅ Helper safe parse double
+  static double _parseDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
   }
 }

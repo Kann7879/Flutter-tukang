@@ -7,19 +7,19 @@ class Job {
   final String deskripsi;
   final int price;
   final String? alamat;
-  final String status; // pending, diterima, dikerjakan, selesai, dibatalkan
+  final String status;
   final DateTime createdAt;
   final DateTime updatedAt;
 
-  // Relations
-  String? customerName;
-  String? customerPhoto;
-  String? tukangName;
-  String? tukangPhoto;
-  String? serviceName;
-  String? categoryName;
-  double? rating;
-  String? review;
+  // Relations - NULL SAFE
+  final String? customerName;
+  final String? customerPhoto;
+  final String? tukangName;
+  final String? tukangPhoto;
+  final String? serviceName;
+  final String? categoryName;
+  final double? rating;
+  final String? review;
 
   Job({
     required this.id,
@@ -45,27 +45,63 @@ class Job {
 
   factory Job.fromJson(Map<String, dynamic> json) {
     return Job(
-      id: json['id'] as int,
-      userId: json['user_id'] as int,
-      tukangProfileId: json['tukang_profile_id'] as int?,
-      serviceId: json['service_id'] as int,
-      categoryId: json['category_id'] as int,
-      deskripsi: json['deskripsi'] as String? ?? '',
-      price: json['price'] as int? ?? 0,
-      alamat: json['alamat'] as String?,
-      status: json['status'] as String? ?? 'pending',
-      createdAt: DateTime.parse(json['created_at'] as String? ?? DateTime.now().toString()),
-      updatedAt: DateTime.parse(json['updated_at'] as String? ?? DateTime.now().toString()),
-      // Relations
-      customerName: json['user']?['name'] as String?,
-      customerPhoto: json['user']?['photo'] as String?,
-      tukangName: json['tukang_profile']?['user']?['name'] as String?,
-      tukangPhoto: json['tukang_profile']?['user']?['photo'] as String?,
-      serviceName: json['service']?['nama_service'] as String?,
-      categoryName: json['category']?['nama_category'] as String?,
-      rating: (json['rating'] as num?)?.toDouble(),
-      review: json['review'] as String?,
+      // 🔥 NULL-SAFE INT CASTING
+      id: (json['id'] ?? 0).toInt(),
+      userId: (json['user_id'] ?? 0).toInt(),
+      tukangProfileId: json['tukang_profile_id']?.toInt(),
+      serviceId: (json['service_id'] ?? 0).toInt(),
+      categoryId: (json['category_id'] ?? 0).toInt(),
+      
+      // 🔥 STRING SAFE
+      deskripsi: json['deskripsi'] ?? '',
+      alamat: json['alamat'],
+      status: json['status'] ?? 'pending',
+      
+      // 🔥 PRICE SAFE
+      price: (json['price'] ?? 0).toInt(),
+      
+      // 🔥 DATETIME SAFE
+      createdAt: _parseDateTime(json['created_at']),
+      updatedAt: _parseDateTime(json['updated_at']),
+      
+      // 🔥 RELATIONS - MATCH PHP CONTROLLER FORMAT
+      customerName: json['user']?['name'] ?? '',
+      customerPhoto: json['user']?['photo'],
+      
+      tukangName: json['tukang']?['name'] ?? 
+                   json['tukangProfile']?['user']?['name'] ?? 
+                   json['tukang_profile']?['name'],
+      tukangPhoto: json['tukang']?['foto'] ?? 
+                   json['tukangProfile']?['foto'] ?? 
+                   json['tukang_profile']?['foto'],
+      
+      serviceName: json['service']?['deskripsi'] ?? '',
+      categoryName: json['service']?['category_name'] ?? 
+                    json['category']?['name'] ?? '',
+      
+      rating: (json['tukang']?['rating'] ?? 0.0).toDouble(),
+      review: json['review'],
     );
+  }
+
+  // 🔥 SAFE DATETIME PARSER
+  static DateTime _parseDateTime(dynamic date) {
+    if (date == null) return DateTime.now();
+    try {
+      if (date is String) {
+        return DateTime.parse(date);
+      } else if (date is int) {
+        return DateTime.fromMillisecondsSinceEpoch(date);
+      }
+      return DateTime.now();
+    } catch (e) {
+      return DateTime.now();
+    }
+  }
+
+  // 🔥 FORMATTER UNTUK UI
+  String get formattedCreatedAt {
+    return '${createdAt.day}/${createdAt.month}/${createdAt.year} ${createdAt.hour}:${createdAt.minute.toString().padLeft(2, '0')}';
   }
 
   Map<String, dynamic> toJson() {
@@ -81,8 +117,6 @@ class Job {
       'status': status,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
-      'rating': rating,
-      'review': review,
     };
   }
 }

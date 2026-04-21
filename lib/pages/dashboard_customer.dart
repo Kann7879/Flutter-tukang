@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:collection/collection.dart';
 import '../services/api_service.dart';
 import '../models/tukang.dart';
 import '../models/user.dart';
@@ -40,51 +41,48 @@ class _DashboardCustomerPageState extends State<DashboardCustomerPage> {
   }
 
   Future<void> _loadData() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+  setState(() {
+    _isLoading = true;
+    _errorMessage = null;
+  });
 
-    try {
-      // Ambil data user
-      final userRes = await _apiService.getProfile();
-      User? user;
-      if (userRes.data != null && userRes.data['data'] != null) {
-        user = User.fromJson(userRes.data['data']);
-      }
+  try {
+    final results = await Future.wait([
+      _apiService.getProfile(),
+      _apiService.getAllTukang(),
+    ]);
 
-      // 🔥 AMBIL SEMUA TUKANG (bukan cuma top)
-      final tukangRes = await _apiService.getAllTukang();
-      List<Tukang> tukangList = [];
-      
-      if (tukangRes.data != null && tukangRes.data['data'] != null) {
-        final rawData = List<Map<String, dynamic>>.from(tukangRes.data['data']);
-        print('📦 Total tukang dari API: ${rawData.length}'); // DEBUG
-        
-        tukangList = rawData.map((json) {
-          print('🔍 Tukang: ${json['name']} - Services: ${json['services']?.length ?? 0}');
-          return Tukang.fromJson(json);
-        }).toList();
-      }
+    final userRes   = results[0];
+    final tukangRes = results[1];
 
-      setState(() {
-        _userName = user?.name ?? 'Pelanggan';
-        _userUsername = user?.username ?? '';
-        _userAddress = user?.address ?? '';
-        _topTukang = tukangList;
-        _isLoading = false;
-      });
-    } catch (e) {
-      print('❌ Error load data: $e');
-      setState(() {
-        _userName = 'Pelanggan';
-        _userAddress = '';
-        _topTukang = [];
-        _isLoading = false;
-        _errorMessage = 'Gagal memuat data: $e';
-      });
+    // Handle berbagai struktur response user
+    final userData = userRes.data['data'] ?? userRes.data;
+    final user = User.fromJson(userData);
+
+    // Parse tukang list
+    List<Tukang> tukangList = [];
+    if (tukangRes.data != null && tukangRes.data['data'] != null) {
+      final rawData = List<Map<String, dynamic>>.from(tukangRes.data['data']);
+      tukangList = rawData.map((json) => Tukang.fromJson(json)).toList();
     }
+
+    setState(() {
+      _userName    = user.name;
+      _userUsername = user.username;
+      _userAddress = user.address ?? '';
+      _topTukang   = tukangList;
+      _isLoading   = false;
+    });
+  } catch (e) {
+    print('❌ Error load data: $e');
+    setState(() {
+      _userName  = 'Pelanggan';
+      _topTukang = [];
+      _isLoading = false;
+      _errorMessage = 'Gagal memuat data: $e';
+    });
   }
+}
 
   // 🔥 NAVIGASI KE LIST TUKANG BY KATEGORI
   void _onCategoryTap(int categoryId, String categoryName) {
@@ -98,36 +96,37 @@ class _DashboardCustomerPageState extends State<DashboardCustomerPage> {
     );
   }
 
-  void _navigateToPage(int index) async {
-    final prefs = await SharedPreferences.getInstance();
-    final role = prefs.getString('role') ?? 'pelanggan';
+ void _navigateToPage(int index) async {
+  final prefs = await SharedPreferences.getInstance();
+  final role = prefs.getString('role') ?? 'pelanggan';
 
-    switch (index) {
-      case 0:
-        break;
-      case 1:
-        if (role == 'tukang') {
-          Navigator.pushReplacementNamed(context, '/tukang_order');
-        } else {
-          Navigator.pushReplacementNamed(context, '/customer_order');
-        }
-        break;
-      case 2:
-        if (role == 'tukang') {
-          Navigator.pushReplacementNamed(context, '/tukang_chat');
-        } else {
-          Navigator.pushReplacementNamed(context, '/customer_chat');
-        }
-        break;
-      case 3:
-        if (role == 'tukang') {
-          Navigator.pushReplacementNamed(context, '/tukang_profile');
-        } else {
-          Navigator.pushReplacementNamed(context, '/customer_profile');
-        }
-        break;
-    }
+  switch (index) {
+    case 0:
+      // Sudah di dashboard
+      break;
+    case 1:
+      if (role == 'tukang') {
+        Navigator.pushReplacementNamed(context, '/tukang_order');
+      } else {
+        Navigator.pushReplacementNamed(context, '/customer_history'); // ✅ FIX
+      }
+      break;
+    case 2:
+      if (role == 'tukang') {
+        Navigator.pushReplacementNamed(context, '/tukang_chat');
+      } else {
+        Navigator.pushReplacementNamed(context, '/customer_chat');
+      }
+      break;
+    case 3:
+      if (role == 'tukang') {
+        Navigator.pushReplacementNamed(context, '/tukang_profile');
+      } else {
+        Navigator.pushReplacementNamed(context, '/customer_profile');
+      }
+      break;
   }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -356,13 +355,35 @@ class _DashboardCustomerPageState extends State<DashboardCustomerPage> {
     );
   }
 
-  Widget _buildTukangCardFromModel(Tukang tukang) {
-    final firstService = tukang.services?.firstOrNull;
-    final displayPrice = firstService?.priceRange ?? 'Rp 0';
-    final displayCategory = firstService?.categoryName ??
-        (tukang.categories?.isNotEmpty == true ? tukang.categories!.first : 'Umum');
+ Widget _buildTukangCardFromModel(Tukang tukang) {
+  // 🔥 SAFETY CHECK: Pastikan ada service & ambil dari DATABASE
+  String displayPrice = 'Rp 0';
+  String displayCategory = 'Umum';
+  String? serviceDeskripsi;
+  
+  if (tukang.services != null && tukang.services!.isNotEmpty) {
+    final firstService = tukang.services!.first; // ✅ Ambil dari DATABASE
+    
+    // 🔥 HARGA DARI DATABASE via getter
+    displayPrice = firstService.priceRange; // Rp 50.000 - Rp 150.000 ✅
+    
+    // 🔥 KATEGORI DARI DATABASE
+    displayCategory = firstService.categoryName ?? 'Umum';
+    
+    // 🔥 DESKRIPSI DARI SERVICE (lebih spesifik)
+    serviceDeskripsi = firstService.deskripsi;
+  } else if (tukang.categories?.isNotEmpty == true) {
+    // Fallback kalau ga ada service
+    displayCategory = tukang.categories!.first;
+  }
 
-    return Container(
+  return GestureDetector(
+    onTap: () => Navigator.pushNamed(
+      context,
+      '/tukang_detail',
+      arguments: {'tukang': tukang},
+    ),
+    child: Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -376,6 +397,7 @@ class _DashboardCustomerPageState extends State<DashboardCustomerPage> {
       ),
       child: Row(
         children: [
+          // 🔥 FOTO TUKANG
           Container(
             width: 60,
             height: 60,
@@ -407,19 +429,25 @@ class _DashboardCustomerPageState extends State<DashboardCustomerPage> {
                   ),
           ),
           const SizedBox(width: 16),
+          
+          // 🔥 INFO TUKANG
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // NAMA & RATING
                 Row(
                   children: [
                     Expanded(
                       child: Text(
                         tukang.name,
                         style: const TextStyle(fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         const Icon(
                           Icons.star,
@@ -428,7 +456,7 @@ class _DashboardCustomerPageState extends State<DashboardCustomerPage> {
                         ),
                         const SizedBox(width: 2),
                         Text(
-                          '${tukang.rating}',
+                          tukang.rating.toStringAsFixed(1),
                           style: const TextStyle(fontSize: 12),
                         ),
                         Text(
@@ -439,7 +467,10 @@ class _DashboardCustomerPageState extends State<DashboardCustomerPage> {
                     ),
                   ],
                 ),
+                
                 const SizedBox(height: 4),
+                
+                // KATEGORI SERVICE
                 Row(
                   children: [
                     Icon(
@@ -448,27 +479,40 @@ class _DashboardCustomerPageState extends State<DashboardCustomerPage> {
                       color: Colors.grey[500],
                     ),
                     const SizedBox(width: 4),
-                    Text(
-                      displayCategory,
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    Expanded(
+                      child: Text(
+                        displayCategory,
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),
+                
                 const SizedBox(height: 4),
+                
+                // DESKRIPSI
                 Text(
-                  tukang.deskripsi ?? firstService?.deskripsi ?? '-',
+                  tukang.deskripsi ?? serviceDeskripsi ?? '-',
                   style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
+                
                 const SizedBox(height: 6),
+                
+                // 🔥 HARGA DARI DATABASE (PASTI MUNCUL!)
                 Text(
                   displayPrice,
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF2563EB),
+                    fontSize: 14,
                   ),
                 ),
+                
+                // MULTIPLE SERVICES
                 if (tukang.services != null && tukang.services!.length > 1)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
@@ -484,29 +528,39 @@ class _DashboardCustomerPageState extends State<DashboardCustomerPage> {
               ],
             ),
           ),
+          
           const SizedBox(width: 12),
+          
+          // TOMBOL PESAN
           GestureDetector(
-            onTap: () {
-              // TODO: Navigate to order page
-              // Navigator.pushNamed(context, '/order', arguments: {'tukangId': tukang.id});
-            },
+            onTap: () => Navigator.pushNamed(
+              context,
+              '/create_order',
+              arguments: {
+                'tukang': tukang,
+                'service': tukang.services?.first, // ✅ Service dari database
+              },
+            ),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: const Color(0xFF2563EB).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF2563EB), width: 1),
               ),
               child: const Text(
                 'Pesan',
                 style: TextStyle(
                   color: Color(0xFF2563EB),
                   fontWeight: FontWeight.w600,
+                  fontSize: 12,
                 ),
               ),
             ),
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }

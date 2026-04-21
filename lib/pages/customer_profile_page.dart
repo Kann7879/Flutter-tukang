@@ -30,6 +30,26 @@ class _CustomerProfilePageState extends State<CustomerProfilePage> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
 
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
+  void _showSuccess(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -40,43 +60,33 @@ class _CustomerProfilePageState extends State<CustomerProfilePage> {
     try {
       print("🔍 Loading profile data...");
       final response = await _apiService.getProfile();
-      print("📍 FULL RESPONSE: $response");
-      print("📍 RESPONSE STATUS: ${response.statusCode}");
-      print("📍 RESPONSE DATA: ${response.data}");
-      print("📍 RESPONSE DATA TYPE: ${response.data.runtimeType}");
       
-      if (response.data != null) {
-        print("✓ Response data exists");
-        print("✓ Response keys: ${(response.data as Map).keys}");
+      print("📍 FULL RESPONSE: ${response.data}");
+      print("📍 DATA TYPE: ${response.data['data'].runtimeType}");
+      
+      if (response.data['success'] == true && response.data['data'] != null) {
+        final userData = response.data['data'] as Map<String, dynamic>;
         
-        if (response.data != null) {
-          print("✓ User data exists");
-          print("✓ User content: ${response.data}");
-          
-          _user = User.fromJson(response.data);
-          
-          setState(() {
-            _nameController.text = _user?.name ?? '';
-            _addressController.text = _user?.address ?? '';
-            _phoneController.text = _user?.phone ?? '';
-            _emailController.text = _user?.email ?? '';
-            _isLoading = false;
-          });
-          
-          print("✅ USER LOADED - Name: ${_user?.name}, Address: ${_user?.address}, Phone: ${_user?.phone}, Email: ${_user?.email}");
-        } else {
-          print("⚠️ USER DATA KOSONG (response.data == null)");
-          setState(() => _isLoading = false);
-          _showErrorDialog("Data profil kosong dari server");
-        }
+        print("📍 Raw user data: $userData");
+        
+        _user = User.fromJson(userData); // Model sudah handle mapping
+        
+        setState(() {
+          _nameController.text = _user!.name;
+          _addressController.text = _user!.address ?? '';
+          _phoneController.text = _user!.phone ?? '';
+          _emailController.text = _user!.email;
+          _isLoading = false;
+        });
+        
+        print("✅ LOADED: ${_user!.name}, ${_user!.address}, ${_user!.phone}");
       } else {
-        print("⚠️ RESPONSE DATA KOSONG (response.data == null)");
         setState(() => _isLoading = false);
-        _showErrorDialog("Gagal mendapatkan response dari server");
+        _showErrorDialog("Data profil kosong");
       }
     } catch (e, stackTrace) {
-      print("❌ ERROR LOAD PROFILE: $e");
-      print("❌ STACK TRACE: $stackTrace");
+      print("❌ ERROR: $e");
+      print("❌ STACK: $stackTrace");
       setState(() => _isLoading = false);
       _showErrorDialog("Gagal memuat profil: $e");
     }

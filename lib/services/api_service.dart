@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/job.dart'; 
 
 class ApiService {
   final Dio _dio = Dio(
@@ -98,11 +99,13 @@ class ApiService {
     }
   }
 
-  // ✅ GET USER PROFILE (MATCH /auth/me ✅)
+  // ✅ GET FULL PROFILE (uses /customer/profile)
   Future<Response> getProfile() async {
     try {
       await setToken();
-      return await _dio.get("/auth/me");
+      final response = await _dio.get("/customer/profile");
+      print("🔍 Profile API Response: ${response.data}");
+      return response;
     } on DioException catch (e) {
       throw _handleError(e);
     }
@@ -129,7 +132,7 @@ class ApiService {
   // ✅ GET ALL TUKANG (MATCH ✅ - Public)
   Future<Response> getAllTukang() async {
     try {
-      return await _dio.get("/tukang"); // No auth needed
+      return await _dio.get("/tukangs"); // ✅ fix
     } on DioException catch (e) {
       throw _handleError(e);
     }
@@ -138,7 +141,7 @@ class ApiService {
   // ✅ GET TUKANG BY CATEGORY (MATCH ✅ - Public)
   Future<Response> getTukangByCategory(int categoryId) async {
     try {
-      return await _dio.get("/tukang/category/$categoryId"); // No auth needed
+      return await _dio.get("/tukangs/category/$categoryId"); // ✅ fix
     } on DioException catch (e) {
       throw _handleError(e);
     }
@@ -163,27 +166,90 @@ class ApiService {
     }
   }
 
-  // ✅ CREATE JOB (MATCH ✅)
-  Future<Response> createJob({
-    required int serviceId,
-    required int categoryId,
-    required String deskripsi,
-    required int price,
-    String? alamat,
-  }) async {
+  Future<List<Job>> getJobs({String? status, String? type}) async {
     try {
-      await setToken();
-      return await _dio.post("/jobs", data: {
-        "service_id": serviceId,
-        "category_id": categoryId,
-        "deskripsi": deskripsi,
-        "price": price,
-        "alamat": alamat,
-      });
+      final response = await _dio.get("/jobs", 
+        queryParameters: {
+          if (status != null) 'status': status,
+          if (type != null) 'type': type,
+        }
+      );
+      
+      print("🔍 Jobs API Response: ${response.data}");
+      
+      if (response.statusCode == 200) {
+        final List<dynamic> dataList = response.data['data'] ?? [];
+        return dataList.map((json) => Job.fromJson(json)).toList();
+      }
+      return [];
     } on DioException catch (e) {
-      throw _handleError(e);
+      print('❌ getJobs ERROR: ${e.response?.data}');
+      rethrow;
     }
   }
+
+  // ✅ FIXED createJob() - HAPUS categoryId parameter
+  Future<Job> createJob({
+  required int serviceId,
+  required String deskripsi,
+  required int price,
+  required String alamat,
+}) async {
+  try {
+    final response = await _dio.post("/jobs", data: {
+      "service_id": serviceId,
+      "deskripsi": deskripsi,
+      "price": price,
+      "alamat": alamat,
+    });
+    
+    print("🔍 CREATE JOB RESPONSE STATUS: ${response.statusCode}");
+    print("🔍 CREATE JOB RESPONSE DATA: ${response.data}");
+    
+    // ✅ FIXED: Handle semua kemungkinan Laravel response
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      final jobData = response.data['data'] ?? response.data;
+      return Job.fromJson(jobData);
+    }
+    
+    // Handle Laravel error response
+    final message = response.data['message'] ?? 'Gagal membuat pesanan';
+    throw Exception(message);
+    
+  } on DioException catch (e) {
+    print('❌ createJob DioException: ${e.response?.statusCode}');
+    print('❌ createJob Response: ${e.response?.data}');
+    
+    // ✅ FIXED: Laravel validation error (422)
+    if (e.response?.statusCode == 422) {
+      final data = e.response?.data;
+      if (data != null && data['errors'] != null) {
+        final errors = data['errors'] as Map;
+        String errorMsg = 'Validasi gagal:\n';
+        errors.forEach((key, value) {
+          errorMsg += '• $key: ${value.first}\n';
+        });
+        throw Exception(errorMsg.trim());
+      }
+    }
+    
+    // ✅ FIXED: Laravel auth error (401/403)
+    if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+      throw Exception('Token tidak valid. Silakan login ulang.');
+    }
+    
+    // ✅ FIXED: Service not found (404)
+    if (e.response?.statusCode == 404) {
+      throw Exception('Layanan tidak ditemukan.');
+    }
+    
+    throw Exception(_handleError(e));
+    
+  } catch (e) {
+    print('❌ createJob General Error: $e');
+    rethrow;
+  }
+}
 
   // ✅ GET MY JOBS (MATCH ✅)
   Future<Response> getMyJobs() async {
@@ -263,39 +329,25 @@ class ApiService {
     }
   }
 
-  // ✅ UPDATE PROFILE (REMAIN - pakai customer profile)
-  Future<Response> updateProfile({
-    String? name,
-    String? username,
-    String? email,
-    String? phone,
-    String? address,
-    String? foto,
-  }) async {
-    try {
-      await setToken();
-      return await _dio.post("/customer/profile", data: {
-        if (name != null) "name": name,
-        if (username != null) "username": username,
-        if (email != null) "email": email,
-        if (phone != null) "phone": phone,
-        if (address != null) "address": address,
-        if (foto != null) "foto": foto,
-      });
-    } on DioException catch (e) {
-      throw _handleError(e);
-    }
+  // ✅ UPDATE FULL PROFILE (uses /customer/profile)
+Future<Response> updateProfile({
+  String? name,
+  String? address,
+  String? phone,
+  String? email,
+}) async {
+  try {
+    await setToken();
+    return await _dio.post("/customer/profile", data: {
+      if (name != null) "name": name,
+      if (email != null) "email": email,
+      if (address != null) "alamat": address,
+      if (phone != null) "no_telepon": phone,
+    });
+  } on DioException catch (e) {
+    throw _handleError(e);
   }
-
-  // ✅ GET CUSTOMER PROFILE (MATCH ✅)
-  Future<Response> getCustomerProfile() async {
-    try {
-      await setToken();
-      return await _dio.get("/customer/profile");
-    } on DioException catch (e) {
-      throw _handleError(e);
-    }
-  }
+}
 
   // ✅ GET TUKANG PROFILE (MATCH ✅)
   Future<Response> getTukangProfile() async {
@@ -325,6 +377,15 @@ class ApiService {
     }
   }
 
+  Future<Response> uploadTukangPhoto(FormData formData) async {
+    try {
+      await setToken();
+      return await _dio.post("/tukang/profile/photo", data: formData);
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   // ✅ GET TUKANG DASHBOARD (MATCH ✅)
   Future<Response> getTukangDashboard() async {
     try {
@@ -335,10 +396,11 @@ class ApiService {
     }
   }
 
-  // ✅ UPLOAD PROFILE PHOTO (REMAIN - tambah route nanti)
+  // ✅ UPLOAD PHOTO (buat route baru nanti, sementara kosong)
   Future<Response> uploadProfilePhoto(FormData formData) async {
     try {
       await setToken();
+      // TODO: Buat route /api/profile/upload-photo
       return await _dio.post("/profile/upload-photo", data: formData);
     } on DioException catch (e) {
       throw _handleError(e);

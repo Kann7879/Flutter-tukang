@@ -6,8 +6,8 @@ class Service {
   final int priceMax;
   final String? deskripsi;
   final String? categoryName;
-  final DateTime createdAt;
-  final DateTime updatedAt;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
 
   Service({
     required this.id,
@@ -17,26 +17,45 @@ class Service {
     required this.priceMax,
     this.deskripsi,
     this.categoryName,
-    required this.createdAt,
-    required this.updatedAt,
+    this.createdAt,
+    this.updatedAt,
   });
 
   factory Service.fromJson(Map<String, dynamic> json) {
-    // Debug print
-    print("   📝 Parsing JSON: $json");
-    
     return Service(
-      id: json['id'] ?? 0,
-      tukangProfileId: json['tukang_profile_id'] ?? 0,
-      categoryId: json['category_id'] ?? 0,
+      id: _parseInt(json['id']),                          // ✅ FIX
+      tukangProfileId: _parseInt(json['tukang_profile_id']), // ✅ FIX
+      categoryId: _parseInt(json['category_id']), 
       priceMin: _parseInt(json['price_min']),
       priceMax: _parseInt(json['price_max']),
       deskripsi: json['deskripsi'],
-      // 🔥 PRIORITAS: category_name (dari mapped response) > category.name (dari Eloquent)
       categoryName: json['category_name'] ?? json['category']?['name'] ?? 'Umum',
-      createdAt: _parseDateTime(json['created_at']),
-      updatedAt: _parseDateTime(json['updated_at']),
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString())
+          : null,
+      updatedAt: json['updated_at'] != null
+          ? DateTime.tryParse(json['updated_at'].toString())
+          : null,
     );
+  }
+
+  String get priceRange {
+    return '${_formatRupiah(priceMin)} - ${_formatRupiah(priceMax)}';
+  }
+
+  static String _formatRupiah(int value) {
+    final s = value.toString();
+    final buffer = StringBuffer();
+    int count = 0;
+    for (int i = s.length - 1; i >= 0; i--) {
+      buffer.write(s[i]);
+      count++;
+      if (count == 3 && i != 0) {
+        buffer.write('.');
+        count = 0;
+      }
+    }
+    return 'Rp ${buffer.toString().split('').reversed.join()}';
   }
 
   static int _parseInt(dynamic value) {
@@ -45,16 +64,6 @@ class Service {
     if (value is double) return value.toInt();
     if (value is String) return int.tryParse(value) ?? 0;
     return 0;
-  }
-
-  static DateTime _parseDateTime(dynamic value) {
-    if (value == null) return DateTime.now();
-    if (value is DateTime) return value;
-    try {
-      return DateTime.parse(value.toString());
-    } catch (e) {
-      return DateTime.now();
-    }
   }
 
   Map<String, dynamic> toJson() {
